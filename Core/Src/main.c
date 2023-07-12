@@ -60,35 +60,40 @@ const char sun[8] = {
 const char moon[8] = {
     0x60, 0xc0, 0xc0, 0xe0,
     0xf0, 0x78, 0x3f, 0x1e};
-uint16_t battary_voltage = 0;    // real-time battary voltage
-uint8_t battary_percentage = 0;  //[0,14] real-time battary percentage
-uint8_t battary_charging_showing_percentage = 14;//for dynamically show charging cartoon
-const uint16_t battary_max_voltage = 3300;//stop charge:8.2V
-const uint16_t battary_stop_charge_voltage = 3133;//stop charge:7.8V
-const uint16_t battary_start_power_supply_voltage = 2560;//start power supply:6.4V
-const uint16_t battary_min_voltage = 2393;//stop power supply:6V
+uint16_t battary_voltage = 0;                              // real-time battary voltage
+uint8_t battary_percentage = 0;                            //[0,14] real-time battary percentage
+uint8_t battary_charging_showing_percentage = 14;          // for dynamically show charging cartoon
+const uint16_t battary_max_voltage = 3300;                 // stop charge:8.2V
+const uint16_t battary_stop_charge_voltage = 3133;         // stop charge:7.8V
+const uint16_t battary_start_power_supply_voltage = 2560;  // start power supply:6.4V
+const uint16_t battary_min_voltage = 2393;                 // stop power supply:6V
 
 // 0:7.8, 1:82 battery last voltage is 7.8V or 8.2V
-//if 7.8V, when battary_voltage (7.8,8.2)V,should charge
-//if 8.2V, when battary_voltage (7.8,8.2)V,should NOT charge
-uint8_t battary_last_78_or_82 = 0; 
+// if 7.8V, when battary_voltage (7.8,8.2)V,should charge
+// if 8.2V, when battary_voltage (7.8,8.2)V,should NOT charge
+uint8_t battary_last_78_or_82 = 0;
+// 0:60, 1:64 battery last voltage is 6.0V or 6.4V
+// if 6.0V, when battary_voltage (6.0,6.4)V,should NOT power supply
+// if 6.4V, when battary_voltage (6.0,6.4)V,should power supply
+uint8_t battary_last_60_or_64 = 0;
 
 uint16_t solar_voltage = 0;                    // real-time solar voltage
 const uint16_t solar_boundary_voltage = 2000;  // if the voltage is higher than this value, it's daytime, otherwise it's night
 
-uint16_t LED_taget_current = 1850;//LED_current get by ADC when 300mA
+uint16_t LED_taget_current = 1850;  // LED_current get by ADC when 300mA
 uint16_t LED_current = 0;
 
 uint16_t battary_charge_current = 0;  // real-time battary charge current
 uint16_t battary_charge_target_current = 1000;
 const uint16_t battary_charge_100mA_current = 604;  // 100mA
-uint16_t battary_charge_current_boundary = 1000;  // if the current is higher than this value, the battary is charging
+uint16_t battary_charge_current_boundary = 604;     // if the current is higher than this value, the battary is charging
 
-uint8_t battary_charge_PWM = 0;     // real-time battary charge PWM duty
-uint8_t battary_charge_ON_OFF = 0;  // real-time battary charge ON/OFF; 0:OFF, 1:ON
+uint8_t battary_charge_PWM = 0;                         // real-time battary charge PWM duty
+uint8_t battary_charge_ON_OFF = 0;                      // real-time battary charge ON/OFF; 0:OFF, 1:ON
+uint8_t const_voltage_limited_current_charge_mode = 0;  // 0:off, 1:on
 
 // NOTO:LED_PWM bigger, LED darker
-uint8_t LED_PWM = 100;  // real-time LED PWM duty
+uint8_t LED_PWM = 100;   // real-time LED PWM duty
 uint8_t LED_ON_OFF = 0;  // real-time LED ON/OFF; 0:OFF, 1:ON
 /* USER CODE END PV */
 
@@ -176,6 +181,7 @@ int main(void) {
         HAL_ADC_PollForConversion(&hadc1, 50);
         battary_charge_current = HAL_ADC_GetValue(&hadc1);
         printf("battary_charge_current:%d\r\n", battary_charge_current);
+
         HAL_ADC_Start(&hadc1);
         HAL_ADC_PollForConversion(&hadc1, 50);
         LED_current = HAL_ADC_GetValue(&hadc1);
@@ -186,10 +192,14 @@ int main(void) {
             LED_ON_OFF = 0;
         } else if (battary_voltage < battary_min_voltage) {  // nighttime,but battary lack power ,LED off
             LED_ON_OFF = 0;
-        } else {
+            battary_last_60_or_64 = 0;
+        } else if (battary_voltage > battary_start_power_supply_voltage) {
             LED_ON_OFF = 1;
+            battary_last_60_or_64 = 1;
+        } else {
+            LED_ON_OFF = battary_last_60_or_64;
         }
-        if (LED_ON_OFF == 1) {
+        if (LED_ON_OFF == 1) {  // LED on
             if (LED_current - LED_taget_current > 500) {
                 LED_PWM += 5;
                 if (LED_PWM > 100) {
@@ -216,23 +226,51 @@ int main(void) {
             HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
             __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, LED_PWM);
             printf("LED_PWM on :%d\r\n", LED_PWM);
-        } else {
+        } else {  // LED off
             HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
             __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 100);
             printf("LED_PWM on:%d\r\n", 100);
         }
 
-
-        if (battary_voltage > battary_max_voltage) {  // battary is full,stop charging
-            battary_charge_ON_OFF = 0;
-        } else {
+        if (battary_voltage >= battary_max_voltage) {  // battary is full, go into const_voltage_limited_current_charge_mode
+            const_voltage_limited_current_charge_mode = 1;
+            battary_last_78_or_82 = 1;
+        } else if (battary_voltage < battary_stop_charge_voltage) {
             battary_charge_ON_OFF = 1;
+            battary_last_78_or_82 = 0;
+        } else {  // battary_voltage: (7.8,8.2],and last time battary_voltage is 7.8, should charge
+            battary_charge_ON_OFF = !battary_last_78_or_82;
         }
-        if (battary_charge_ON_OFF == 1) {
+
+        if (battary_charge_ON_OFF == 1 && const_voltage_limited_current_charge_mode == 0) {
             battary_charge_PWM = 100;
             HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
             __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, battary_charge_PWM);
             printf("battary_charge_PWM on :%d\r\n", battary_charge_PWM);
+        } else if (const_voltage_limited_current_charge_mode == 1) {
+            if (battary_charge_current < battary_charge_100mA_current) {
+                const_voltage_limited_current_charge_mode = 0;
+                battary_charge_ON_OFF = 0;
+            } else if (battary_voltage > battary_max_voltage) {
+                if (battary_charge_PWM > 1) {
+                    battary_charge_PWM--;
+                } else {
+                    battary_charge_PWM = 0;
+                }
+            } else {
+                battary_charge_PWM++;
+                if (battary_charge_PWM > 100) {
+                    battary_charge_PWM = 100;
+                }
+            }
+            if (battary_charge_ON_OFF) {
+                HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+                __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, battary_charge_PWM);
+                printf("battary_charge_PWM on :%d\r\n", battary_charge_PWM);
+            } else {
+                HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+                printf("battary_charge_PWM off\r\n");
+            }
         } else {
             HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
             printf("battary_charge_PWM off\r\n");
