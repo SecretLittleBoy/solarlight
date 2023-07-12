@@ -62,12 +62,16 @@ const char moon[8] = {
     0xf0, 0x78, 0x3f, 0x1e};
 uint16_t battary_voltage = 0;    // real-time battary voltage
 uint8_t battary_percentage = 0;  //[0,14] real-time battary percentage
-uint8_t battary_charging_showing_percentage = 14;
-const uint16_t battary_max_voltage = 3299;//stop charge
-const uint16_t battary_stop_charge_voltage = 3000;//stop charge
-const uint16_t battary_start_power_supply_voltage = 2500;//start power supply
-const uint16_t battary_min_voltage = 2393;//stop power supply
+uint8_t battary_charging_showing_percentage = 14;//for dynamically show charging cartoon
+const uint16_t battary_max_voltage = 3300;//stop charge:8.2V
+const uint16_t battary_stop_charge_voltage = 3133;//stop charge:7.8V
+const uint16_t battary_start_power_supply_voltage = 2560;//start power supply:6.4V
+const uint16_t battary_min_voltage = 2393;//stop power supply:6V
 
+// 0:7.8, 1:82 battery last voltage is 7.8V or 8.2V
+//if 7.8V, when battary_voltage (7.8,8.2)V,should charge
+//if 8.2V, when battary_voltage (7.8,8.2)V,should NOT charge
+uint8_t battary_last_78_or_82 = 0; 
 
 uint16_t solar_voltage = 0;                    // real-time solar voltage
 const uint16_t solar_boundary_voltage = 2000;  // if the voltage is higher than this value, it's daytime, otherwise it's night
@@ -77,6 +81,7 @@ uint16_t LED_current = 0;
 
 uint16_t battary_charge_current = 0;  // real-time battary charge current
 uint16_t battary_charge_target_current = 1000;
+const uint16_t battary_charge_100mA_current = 604;  // 100mA
 uint16_t battary_charge_current_boundary = 1000;  // if the current is higher than this value, the battary is charging
 
 uint8_t battary_charge_PWM = 0;     // real-time battary charge PWM duty
@@ -84,10 +89,6 @@ uint8_t battary_charge_ON_OFF = 0;  // real-time battary charge ON/OFF; 0:OFF, 1
 
 // NOTO:LED_PWM bigger, LED darker
 uint8_t LED_PWM = 100;  // real-time LED PWM duty
-int low = 0;            // 范围下限
-int high = 100;         // 范围上限
-int guess;              // 猜测的数
-
 uint8_t LED_ON_OFF = 0;  // real-time LED ON/OFF; 0:OFF, 1:ON
 /* USER CODE END PV */
 
@@ -220,6 +221,7 @@ int main(void) {
             __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 100);
             printf("LED_PWM on:%d\r\n", 100);
         }
+
 
         if (battary_voltage > battary_max_voltage) {  // battary is full,stop charging
             battary_charge_ON_OFF = 0;
