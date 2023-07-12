@@ -176,46 +176,8 @@ int main(void) {
         printf("LED_current:%d\r\n", LED_current);
         my_P6x8Str(64, 2, "LED:", LED_current, "   ");
 
-        if (solar_voltage > solar_boundary_voltage) {  // daytime,LED off
-            LED_ON_OFF = 0;
-        } else if (battary_voltage < battary_min_voltage) {  // nighttime,but battary lack power ,LED off
-            LED_ON_OFF = 0;
-        } else {
-            LED_ON_OFF = 1;
-        }
-        if (LED_ON_OFF == 1) {
-            if (LED_current > LED_taget_current) {
-                if (LED_PWM < LED_PWM_high_boundary) LED_PWM_low_boundary = LED_PWM;
-                LED_PWM = (LED_PWM_low_boundary + LED_PWM_high_boundary) / 2;
-            } else {
-                if (LED_PWM > LED_PWM_low_boundary) LED_PWM_high_boundary = LED_PWM;
-                LED_PWM = (LED_PWM_low_boundary + LED_PWM_high_boundary) / 2;
-            }
-            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, LED_PWM);
-            printf("LED_PWM on :%d\r\n", LED_PWM);
-        } else {
-            LED_PWM_low_boundary = 0;
-            LED_PWM_high_boundary = 100;  // reset
-            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 100);
-            printf("LED_PWM on:%d\r\n", 100);
-        }
-
-        if (battary_voltage > battary_max_voltage) {  // battary is full,stop charging
-            battary_charge_ON_OFF = 0;
-        } else {
-            battary_charge_ON_OFF = 1;
-        }
-        if (battary_charge_ON_OFF == 1) {
-            battary_charge_PWM = 100;
-            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, battary_charge_PWM);
-            printf("battary_charge_PWM on :%d\r\n", battary_charge_PWM);
-        } else {
-            HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-            printf("battary_charge_PWM off\r\n");
-        }
+        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 40);
 
         HAL_Delay(1000);
         /* USER CODE END WHILE */
