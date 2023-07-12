@@ -63,13 +63,16 @@ const char moon[8] = {
 uint16_t battary_voltage = 0;    // real-time battary voltage
 uint8_t battary_percentage = 0;  //[0,14] real-time battary percentage
 uint8_t battary_charging_showing_percentage = 14;
-const uint16_t battary_max_voltage = 3299;
-const uint16_t battary_min_voltage = 2393;
+const uint16_t battary_max_voltage = 3299;//stop charge
+const uint16_t battary_stop_charge_voltage = 3000;//stop charge
+const uint16_t battary_start_power_supply_voltage = 2500;//start power supply
+const uint16_t battary_min_voltage = 2393;//stop power supply
+
 
 uint16_t solar_voltage = 0;                    // real-time solar voltage
 const uint16_t solar_boundary_voltage = 2000;  // if the voltage is higher than this value, it's daytime, otherwise it's night
 
-uint16_t LED_taget_current = 1000;
+uint16_t LED_taget_current = 1850;//LED_current get by ADC when 300mA
 uint16_t LED_current = 0;
 
 uint16_t battary_charge_current = 0;  // real-time battary charge current
@@ -80,10 +83,12 @@ uint8_t battary_charge_PWM = 0;     // real-time battary charge PWM duty
 uint8_t battary_charge_ON_OFF = 0;  // real-time battary charge ON/OFF; 0:OFF, 1:ON
 
 // NOTO:LED_PWM bigger, LED darker
-uint8_t LED_PWM = 0;                  // real-time LED PWM duty
-uint8_t LED_PWM_low_boundary = 0;     // 范围下限
-uint8_t LED_PWM_high_boundary = 100;  // 范围上限
-uint8_t LED_ON_OFF = 0;               // real-time LED ON/OFF; 0:OFF, 1:ON
+uint8_t LED_PWM = 100;  // real-time LED PWM duty
+int low = 0;            // 范围下限
+int high = 100;         // 范围上限
+int guess;              // 猜测的数
+
+uint8_t LED_ON_OFF = 0;  // real-time LED ON/OFF; 0:OFF, 1:ON
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -176,10 +181,63 @@ int main(void) {
         printf("LED_current:%d\r\n", LED_current);
         my_P6x8Str(64, 2, "LED:", LED_current, "   ");
 
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 40);
+        if (solar_voltage > solar_boundary_voltage) {  // daytime,LED off
+            LED_ON_OFF = 0;
+        } else if (battary_voltage < battary_min_voltage) {  // nighttime,but battary lack power ,LED off
+            LED_ON_OFF = 0;
+        } else {
+            LED_ON_OFF = 1;
+        }
+        if (LED_ON_OFF == 1) {
+            if (LED_current - LED_taget_current > 500) {
+                LED_PWM += 5;
+                if (LED_PWM > 100) {
+                    LED_PWM = 100;
+                }
+            } else if (LED_current > LED_taget_current) {
+                LED_PWM += 1;
+                if (LED_PWM > 100) {
+                    LED_PWM = 100;
+                }
+            } else if (LED_taget_current - LED_current > 500) {
+                if (LED_PWM > 5) {
+                    LED_PWM -= 5;
+                } else {
+                    LED_PWM = 0;
+                }
+            } else {
+                if (LED_PWM > 1) {
+                    LED_PWM -= 1;
+                } else {
+                    LED_PWM = 0;
+                }
+            }
+            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, LED_PWM);
+            printf("LED_PWM on :%d\r\n", LED_PWM);
+        } else {
+            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 100);
+            printf("LED_PWM on:%d\r\n", 100);
+        }
 
-        HAL_Delay(1000);
+        if (battary_voltage > battary_max_voltage) {  // battary is full,stop charging
+            battary_charge_ON_OFF = 0;
+        } else {
+            battary_charge_ON_OFF = 1;
+        }
+        if (battary_charge_ON_OFF == 1) {
+            battary_charge_PWM = 100;
+            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, battary_charge_PWM);
+            printf("battary_charge_PWM on :%d\r\n", battary_charge_PWM);
+        } else {
+            HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+            printf("battary_charge_PWM off\r\n");
+        }
+
+        printf("\r\n");
+        HAL_Delay(500);
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */
