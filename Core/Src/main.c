@@ -236,9 +236,9 @@ int main(void) {
             const_voltage_limited_current_charge_mode = 1;
             battary_last_78_or_82 = 1;
         } else if (battary_voltage < battary_stop_charge_voltage) {
-            battary_charge_ON_OFF = 1;
+            battary_charge_ON_OFF = 1;//on ,should charge
             battary_last_78_or_82 = 0;
-        } else {  // battary_voltage: (7.8,8.2],and last time battary_voltage is 7.8, should charge
+        } else {  // battary_voltage: (7.8,8.2]
             battary_charge_ON_OFF = !battary_last_78_or_82;
         }
 
@@ -247,7 +247,7 @@ int main(void) {
             HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
             __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, battary_charge_PWM);
             printf("battary_charge_PWM on :%d\r\n", battary_charge_PWM);
-        } else if (const_voltage_limited_current_charge_mode == 1) {
+        } else if (battary_charge_ON_OFF == 1 && const_voltage_limited_current_charge_mode == 1) {
             if (battary_charge_current < battary_charge_100mA_current) {
                 const_voltage_limited_current_charge_mode = 0;
                 battary_charge_ON_OFF = 0;
