@@ -63,10 +63,10 @@ const char moon[8] = {
 uint16_t battary_voltage = 0;                              // real-time battary voltage
 uint8_t battary_percentage = 0;                            //[0,14] real-time battary percentage
 uint8_t battary_charging_showing_percentage = 14;          // for dynamically show charging cartoon
-const uint16_t battary_max_voltage = 3300;                 // stop charge:8.2V
-const uint16_t battary_stop_charge_voltage = 3133;         // stop charge:7.8V
-const uint16_t battary_start_power_supply_voltage = 2560;  // start power supply:6.4V
-const uint16_t battary_min_voltage = 2393;                 // stop power supply:6V
+const uint16_t battary_max_voltage = 2720;                 // stop charge:8.2V ,8.19V max ADC value <2720<8.2V ADC max value
+const uint16_t battary_stop_charge_voltage = 2537;         // stop charge:7.8V ,7.80V ADC min value <2537<7.81V ADC min value
+const uint16_t battary_start_power_supply_voltage = 2060;  // start power supply:6.4V ,6.39V ADC max value:2105 <  <6.40V ADC max value:2110
+const uint16_t battary_min_voltage = 1985;                 // stop power supply:6V,  6.00 min ADC value:1955 <  <6.01 min ADC value: 1955
 
 // 0:7.8, 1:82 battery last voltage is 7.8V or 8.2V
 // if 7.8V, when battary_voltage (7.8,8.2)V,should charge
@@ -80,7 +80,7 @@ uint8_t battary_last_60_or_64 = 0;
 uint16_t solar_voltage = 0;                    // real-time solar voltage
 const uint16_t solar_boundary_voltage = 2000;  // if the voltage is higher than this value, it's daytime, otherwise it's night
 
-uint16_t LED_taget_current = 1850;  // LED_current get by ADC when 300mA
+uint16_t LED_taget_current = 1525;  // LED_current get by ADC when 300mA
 uint16_t LED_current = 0;
 
 uint16_t battary_charge_current = 0;  // real-time battary charge current
@@ -100,7 +100,7 @@ uint8_t LED_ON_OFF = 0;  // real-time LED ON/OFF; 0:OFF, 1:ON
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void ADC_get_average_value(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -152,41 +152,7 @@ int main(void) {
     /* Infinite loop */
     /* USER CODE BEGIN WHILE */
     while (1) {
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 50);
-        battary_voltage = HAL_ADC_GetValue(&hadc1);
-        if (battary_voltage > battary_max_voltage) {
-            battary_percentage = 14;
-        } else if (battary_voltage < battary_min_voltage) {
-            battary_percentage = 0;
-        } else {
-            battary_percentage = round((battary_voltage - battary_min_voltage) * 14.0 / (battary_max_voltage - battary_min_voltage));
-        }
-        if (battary_charge_current <= battary_charge_current_boundary) {
-            OLED_draw_battary_icon(127 - 16, 0, battary_percentage);
-        }
-        printf("battary_voltage:%d\r\n", battary_voltage);
-
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 50);
-        solar_voltage = HAL_ADC_GetValue(&hadc1);
-        if (solar_voltage > solar_boundary_voltage) {
-            Draw_BMP(127 - 16 - 8 - 2, 0, 8, 8, sun);
-        } else {
-            Draw_BMP(127 - 16 - 8 - 2, 0, 8, 8, moon);
-        }
-        printf("solar_voltage:%d\r\n", solar_voltage);
-
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 50);
-        battary_charge_current = HAL_ADC_GetValue(&hadc1);
-        printf("battary_charge_current:%d\r\n", battary_charge_current);
-
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 50);
-        LED_current = HAL_ADC_GetValue(&hadc1);
-        printf("LED_current:%d\r\n", LED_current);
-        my_P6x8Str(64, 2, "LED:", LED_current, "   ");
+        ADC_get_average_value();
 
         if (solar_voltage > solar_boundary_voltage) {  // daytime,LED off
             LED_ON_OFF = 0;
@@ -236,7 +202,7 @@ int main(void) {
             const_voltage_limited_current_charge_mode = 1;
             battary_last_78_or_82 = 1;
         } else if (battary_voltage < battary_stop_charge_voltage) {
-            battary_charge_ON_OFF = 1;//on ,should charge
+            battary_charge_ON_OFF = 1;  // on ,should charge
             battary_last_78_or_82 = 0;
         } else {  // battary_voltage: (7.8,8.2]
             battary_charge_ON_OFF = !battary_last_78_or_82;
@@ -277,7 +243,7 @@ int main(void) {
         }
 
         printf("\r\n");
-        HAL_Delay(500);
+        //HAL_Delay(1);
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */
@@ -338,6 +304,56 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
             }
         }
     }
+}
+
+void ADC_get_average_value(void) {
+    uint32_t battary_voltage_sum = 0;
+    uint32_t solar_voltage_sum = 0;
+    uint32_t battary_charge_current_sum = 0;
+    uint32_t LED_current_sum = 0;
+    uint32_t sum_times = 200;
+    for (uint8_t i = 0; i < sum_times; i++) {
+        HAL_ADC_Start(&hadc1);
+        HAL_ADC_PollForConversion(&hadc1, 50);
+        battary_voltage_sum += HAL_ADC_GetValue(&hadc1);
+
+        HAL_ADC_Start(&hadc1);
+        HAL_ADC_PollForConversion(&hadc1, 50);
+        solar_voltage_sum += HAL_ADC_GetValue(&hadc1);
+
+        HAL_ADC_Start(&hadc1);
+        HAL_ADC_PollForConversion(&hadc1, 50);
+        battary_charge_current_sum += HAL_ADC_GetValue(&hadc1);
+
+        HAL_ADC_Start(&hadc1);
+        HAL_ADC_PollForConversion(&hadc1, 50);
+        LED_current_sum += HAL_ADC_GetValue(&hadc1);
+    }
+    battary_voltage = battary_voltage_sum / sum_times;
+    solar_voltage = solar_voltage_sum / sum_times;
+    battary_charge_current = battary_charge_current_sum / sum_times;
+    LED_current = LED_current_sum / sum_times;
+
+    if (battary_voltage > battary_max_voltage) {
+        battary_percentage = 14;
+    } else if (battary_voltage < battary_min_voltage) {
+        battary_percentage = 0;
+    } else {
+        battary_percentage = round((battary_voltage - battary_min_voltage) * 14.0 / (battary_max_voltage - battary_min_voltage));
+    }
+    if (battary_charge_current <= battary_charge_current_boundary) {
+        OLED_draw_battary_icon(127 - 16, 0, battary_percentage);
+    }
+    printf("battary_voltage:%d\r\n", battary_voltage);
+
+    if (solar_voltage > solar_boundary_voltage) {
+        Draw_BMP(127 - 16 - 8 - 2, 0, 8, 8, sun);
+    } else {
+        Draw_BMP(127 - 16 - 8 - 2, 0, 8, 8, moon);
+    }
+    printf("solar_voltage:%d\r\n", solar_voltage);
+    printf("battary_charge_current:%d\r\n", battary_charge_current);
+    printf("LED_current:%d\r\n", LED_current);
 }
 /* USER CODE END 4 */
 
