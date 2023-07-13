@@ -38,7 +38,14 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+#define SUM_TIMES 100
+struct cycle_queue {
+    uint16_t data[SUM_TIMES];
+    uint8_t next_store_index;
+    uint32_t data_num;
+    uint16_t data_average;
+    uint8_t data_count;  // data_count<=SUM_TIMES, data_count=SUM_TIMES means the queue is full
+};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -61,12 +68,13 @@ const char moon[8] = {
     0x60, 0xc0, 0xc0, 0xe0,
     0xf0, 0x78, 0x3f, 0x1e};
 uint16_t battary_voltage = 0;                              // real-time battary voltage
+struct cycle_queue battary_voltage_queue;                  // battary voltage queue
 uint8_t battary_percentage = 0;                            //[0,14] real-time battary percentage
 uint8_t battary_charging_showing_percentage = 14;          // for dynamically show charging cartoon
 const uint16_t battary_max_voltage = 2720;                 // stop charge:8.2V ,8.19V max ADC value <2720<8.2V ADC max value
 const uint16_t battary_stop_charge_voltage = 2537;         // stop charge:7.8V ,7.80V ADC min value <2537<7.81V ADC min value
-const uint16_t battary_start_power_supply_voltage = 2060;  // start power supply:6.4V ,6.39V ADC max value:2105 <  <6.40V ADC max value:2110
-const uint16_t battary_min_voltage = 1985;                 // stop power supply:6V,  6.00 min ADC value:1955 <  <6.01 min ADC value: 1955
+const uint16_t battary_start_power_supply_voltage = 2067;  // start power supply:6.4V ,6.39V ADC max value:2105 <  <6.40V ADC max value:2110
+const uint16_t battary_min_voltage = 1950;                 // stop power supply:6V,  6.00 min ADC value:1955 <  <6.01 min ADC value: 1955
 
 // 0:7.8, 1:82 battery last voltage is 7.8V or 8.2V
 // if 7.8V, when battary_voltage (7.8,8.2)V,should charge
@@ -78,12 +86,14 @@ uint8_t battary_last_78_or_82 = 0;
 uint8_t battary_last_60_or_64 = 0;
 
 uint16_t solar_voltage = 0;                    // real-time solar voltage
+struct cycle_queue solar_voltage_queue;        // solar voltage queue
 const uint16_t solar_boundary_voltage = 2000;  // if the voltage is higher than this value, it's daytime, otherwise it's night
 
 uint16_t LED_taget_current = 1525;  // LED_current get by ADC when 300mA
 uint16_t LED_current = 0;
 
 uint16_t battary_charge_current = 0;  // real-time battary charge current
+struct cycle_queue battary_charge_current_queue;
 uint16_t battary_charge_target_current = 1000;
 const uint16_t battary_charge_100mA_current = 604;  // 100mA
 uint16_t battary_charge_current_boundary = 604;     // if the current is higher than this value, the battary is charging
@@ -101,6 +111,7 @@ uint8_t LED_ON_OFF = 0;  // real-time LED ON/OFF; 0:OFF, 1:ON
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 void ADC_get_average_value(void);
+void cycle_queue_add_data(struct cycle_queue *queue, uint16_t data);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -243,7 +254,7 @@ int main(void) {
         }
 
         printf("\r\n");
-        //HAL_Delay(1);
+        // HAL_Delay(1);
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */
@@ -307,32 +318,24 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 void ADC_get_average_value(void) {
-    uint32_t battary_voltage_sum = 0;
-    uint32_t solar_voltage_sum = 0;
-    uint32_t battary_charge_current_sum = 0;
-    uint32_t LED_current_sum = 0;
-    uint32_t sum_times = 200;
-    for (uint8_t i = 0; i < sum_times; i++) {
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 50);
-        battary_voltage_sum += HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 50);
+    cycle_queue_add_data(&battary_voltage_queue, HAL_ADC_GetValue(&hadc1));
+    battary_voltage = battary_voltage_queue.data_average;
 
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 50);
-        solar_voltage_sum += HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 50);
+    cycle_queue_add_data(&solar_voltage_queue, HAL_ADC_GetValue(&hadc1));
+    solar_voltage = solar_voltage_queue.data_average;
 
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 50);
-        battary_charge_current_sum += HAL_ADC_GetValue(&hadc1);
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 50);
+    cycle_queue_add_data(&battary_charge_current_queue, HAL_ADC_GetValue(&hadc1));
+    battary_charge_current = battary_charge_current_queue.data_average;
 
-        HAL_ADC_Start(&hadc1);
-        HAL_ADC_PollForConversion(&hadc1, 50);
-        LED_current_sum += HAL_ADC_GetValue(&hadc1);
-    }
-    battary_voltage = battary_voltage_sum / sum_times;
-    solar_voltage = solar_voltage_sum / sum_times;
-    battary_charge_current = battary_charge_current_sum / sum_times;
-    LED_current = LED_current_sum / sum_times;
+    HAL_ADC_Start(&hadc1);
+    HAL_ADC_PollForConversion(&hadc1, 50);
+    LED_current = HAL_ADC_GetValue(&hadc1);
 
     if (battary_voltage > battary_max_voltage) {
         battary_percentage = 14;
@@ -354,6 +357,28 @@ void ADC_get_average_value(void) {
     printf("solar_voltage:%d\r\n", solar_voltage);
     printf("battary_charge_current:%d\r\n", battary_charge_current);
     printf("LED_current:%d\r\n", LED_current);
+}
+
+void cycle_queue_add_data(struct cycle_queue *queue, uint16_t data) {
+    // Subtract the oldest value from the data_num
+    queue->data_num -= queue->data[queue->next_store_index];
+
+    // Add data to the queue
+    queue->data[queue->next_store_index] = data;
+
+    // Add the new value to the data_num
+    queue->data_num += data;
+
+    // Update the next store index
+    queue->next_store_index = (queue->next_store_index + 1) % SUM_TIMES;
+
+    // Update the data count
+    if (queue->data_count < SUM_TIMES) {
+        // Increment data count if the queue is not yet full
+        queue->data_count++;
+    }
+    // Calculate the new data average
+    queue->data_average = queue->data_num / queue->data_count;
 }
 /* USER CODE END 4 */
 
