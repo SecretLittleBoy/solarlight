@@ -61,6 +61,7 @@ struct cycle_queue {
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+uint8_t which_key_pressed = 0;  // which key is pressed.0: no key pressed
 const char sun[8] = {
     0x91, 0x52, 0x3c, 0xbe,
     0x7d, 0x3c, 0x4a, 0x89};
@@ -71,14 +72,14 @@ uint16_t battary_voltage = 0;                              // real-time battary 
 struct cycle_queue battary_voltage_queue;                  // battary voltage queue
 uint8_t battary_percentage = 0;                            //[0,14] real-time battary percentage
 uint8_t battary_charging_showing_percentage = 14;          // for dynamically show charging cartoon
-const uint16_t battary_max_voltage = 2720;                 // stop charge:8.2V ,8.19V max ADC value <2720<8.2V ADC max value
+const uint16_t battary_max_voltage = 2666;                 // stop charge:8.2V ,8.19V max ADC value <2720<8.2V ADC max value
 const uint16_t battary_stop_charge_voltage = 2537;         // stop charge:7.8V ,7.80V ADC min value <2537<7.81V ADC min value
 const uint16_t battary_start_power_supply_voltage = 2067;  // start power supply:6.4V ,6.39V ADC max value:2105 <  <6.40V ADC max value:2110
-const uint16_t battary_min_voltage = 1950;                 // stop power supply:6V,  6.00 min ADC value:1955 <  <6.01 min ADC value: 1955
-
-// 0:7.8, 1:82 battery last voltage is 7.8V or 8.2V
-// if 7.8V, when battary_voltage (7.8,8.2)V,should charge
-// if 8.2V, when battary_voltage (7.8,8.2)V,should NOT charge
+const uint16_t battary_min_voltage = 1990;                 // stop power supply:6V,  6.00 min ADC value:1955 <  <6.01 min ADC value: 1955
+// const uint16_t battary_min_voltage_when_LED_OFF = 1955;                // stop power supply:6V,  6.00 min ADC value:1955 <  <6.01 min ADC value: 1955
+//  0:7.8, 1:82 battery last voltage is 7.8V or 8.2V
+//  if 7.8V, when battary_voltage (7.8,8.2)V,should charge
+//  if 8.2V, when battary_voltage (7.8,8.2)V,should NOT charge
 uint8_t battary_last_78_or_82 = 0;
 // 0:60, 1:64 battery last voltage is 6.0V or 6.4V
 // if 6.0V, when battary_voltage (6.0,6.4)V,should NOT power supply
@@ -95,7 +96,7 @@ uint16_t LED_current = 0;
 uint16_t battary_charge_current = 0;  // real-time battary charge current
 struct cycle_queue battary_charge_current_queue;
 uint16_t battary_charge_target_current = 1000;
-const uint16_t battary_charge_100mA_current = 604;  // 100mA
+const uint16_t battary_charge_100mA_current = 510;  // 100mA //604
 uint16_t battary_charge_current_boundary = 604;     // if the current is higher than this value, the battary is charging
 
 uint8_t battary_charge_PWM = 0;                         // real-time battary charge PWM duty
@@ -216,9 +217,11 @@ int main(void) {
             battary_charge_ON_OFF = 1;  // on ,should charge
             battary_last_78_or_82 = 0;
         } else {  // battary_voltage: (7.8,8.2]
-            battary_charge_ON_OFF = !battary_last_78_or_82;
+            if (!const_voltage_limited_current_charge_mode) {
+                battary_charge_ON_OFF = !battary_last_78_or_82;
+            }
         }
-
+        printf("charge ON OFF%d,charge_mode:%d\r\n", battary_charge_ON_OFF, const_voltage_limited_current_charge_mode);
         if (battary_charge_ON_OFF == 1 && const_voltage_limited_current_charge_mode == 0) {
             battary_charge_PWM = 100;
             HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
@@ -246,14 +249,44 @@ int main(void) {
                 printf("battary_charge_PWM on :%d\r\n", battary_charge_PWM);
             } else {
                 HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-                printf("battary_charge_PWM off\r\n");
+                printf("line:249:battary_charge_PWM off\r\n");
             }
         } else {
             HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-            printf("battary_charge_PWM off\r\n");
+            printf("line:253:battary_charge_PWM off\r\n");
         }
 
         printf("\r\n");
+
+        which_key_pressed = KEY_Scan(0);
+        switch (which_key_pressed) {
+            case KEY0_PRES: {
+                printf("KEY0_PRES\r\n");
+                OLED_P6x8Str(0, 1, "KEY0_PRES");
+                if(LED_taget_current > 255){
+                    LED_taget_current -= 255;
+                }
+                break;
+            }
+            case KEY1_PRES: {
+                printf("KEY1_PRES\r\n");
+                break;
+            }
+            case KEY2_PRES: {
+                printf("KEY2_PRES\r\n");
+                break;
+            }
+            case KEY3_PRES: {
+                printf("KEY3_PRES\r\n");
+                OLED_P6x8Str(0, 1, "KEY3_PRES");
+                if(LED_taget_current < 3900){
+                    LED_taget_current += 255;
+                }
+                break;
+            }
+            default:
+                break;
+        }
         // HAL_Delay(1);
         /* USER CODE END WHILE */
 
